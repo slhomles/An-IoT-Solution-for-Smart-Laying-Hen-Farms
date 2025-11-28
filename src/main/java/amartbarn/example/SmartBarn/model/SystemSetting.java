@@ -30,6 +30,14 @@ public class SystemSetting {
     // Giờ bắt đầu hoàng hôn (VD: "20:00") [cite: 170]
     private String sunsetTime;
 
+    // --- 1. BĂNG CHUYỀN (Tính theo GIÂY) ---
+    private String conveyorStartTime;        // Ví dụ: "07:00:00"
+    private Integer conveyorDurationSeconds; // Ví dụ: 30 (giây)
+
+    // --- 2. MÁY DỌN PHÂN (Cũng tính theo GIÂY) ---
+    private String cleanerStartTime;         // Ví dụ: "17:00:00"
+    private Integer cleanerDurationSeconds;
+
     // Thời gian chạy mô phỏng ánh sáng (phút) - VD: 30 phút
     private Integer simulationDurationMinutes;
 }

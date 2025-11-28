@@ -74,7 +74,7 @@ public class WebController {
     // Payload: { "deviceId": "FAN_SYSTEM", "mode": "AUTO" }
     @PostMapping("/mode")
     public DeviceState switchMode(@RequestBody ModeRequest request) {
-        return deviceService.switchMode(request.getDeviceId(), request.getRequestMode());
+        return deviceService.switchMode(request.getDeviceId(), request.getMode());
     }
 
     // --- DTO (Data Transfer Object) CLASSES ---
@@ -88,6 +88,6 @@ public class WebController {
     @Data
     static class ModeRequest {
         private String deviceId;
-        private DeviceMode requestMode;
+        private DeviceMode mode;
     }
 }

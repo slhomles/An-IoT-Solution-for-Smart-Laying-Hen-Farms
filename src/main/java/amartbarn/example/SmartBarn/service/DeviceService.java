@@ -5,9 +5,12 @@ import amartbarn.example.SmartBarn.model.*;
 import amartbarn.example.SmartBarn.repository.ActionLogRepository;
 import amartbarn.example.SmartBarn.repository.DeviceStateRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeParseException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -129,6 +132,88 @@ public class DeviceService {
         return commands;
     }
 
+    @Scheduled(cron = "0 * * * * ?")
+    public void autoControlLightByTime() {
+        // 1. Lấy cài đặt thời gian từ DB
+        SystemSetting setting = settingService.getCurrentSetting();
+        String sunriseStr = setting.getSunriseTime(); // Giờ tắt đèn (VD: 05:00)
+        String sunsetStr = setting.getSunsetTime();   // Giờ bật đèn (VD: 18:00)
+
+        // 2. Kiểm tra định dạng giờ (tránh lỗi null hoặc sai format)
+        if (sunriseStr == null || sunsetStr == null) return;
+
+        try {
+            LocalTime now = LocalTime.now();
+            LocalTime sunrise = LocalTime.parse(sunriseStr);
+            LocalTime sunset = LocalTime.parse(sunsetStr);
+
+            // 3. Xác định trạng thái mong muốn
+            // Đèn sẽ BẬT khi trời tối (sau hoàng hôn HOẶC trước bình minh)
+            // Ví dụ: 18:00 -> 05:00 sáng hôm sau
+            boolean shouldBeOn = now.isAfter(sunset) || now.isBefore(sunrise);
+
+            // 4. Gọi hàm điều khiển chung (đã có sẵn logic check AUTO/MANUAL)
+            checkAndControlDevice(DeviceConst.LIGHT_ID, shouldBeOn);
+
+        } catch (DateTimeParseException e) {
+            System.err.println("Lỗi định dạng giờ trong SystemSetting: " + e.getMessage());
+        }
+    }
+    @Scheduled(cron = "* * * * * ?")
+    public void runScheduledTasks() {
+        // Lấy setting hiện tại
+        SystemSetting setting = settingService.getCurrentSetting();
+        LocalTime now = LocalTime.now();
+
+        // 1. Xử lý Băng Chuyền
+        processTimerLogic(
+                DeviceConst.CONVEYOR_ID,
+                setting.getConveyorStartTime(),
+                setting.getConveyorDurationSeconds(),
+                now
+        );
+
+        // 2. Xử lý Máy Dọn Phân
+        processTimerLogic(
+                DeviceConst.CLEANER_ID,
+                setting.getCleanerStartTime(),
+                setting.getCleanerDurationSeconds(),
+                now
+        );
+    }
+
+    // --- HÀM XỬ LÝ CHUNG (Đã tối ưu cho GIÂY) ---
+    private void processTimerLogic(String deviceId, String startTimeStr, Integer durationSeconds, LocalTime now) {
+        // Kiểm tra input: Nếu chưa cài đặt giờ hoặc thời gian chạy <= 0 thì bỏ qua
+        if (startTimeStr == null || durationSeconds == null || durationSeconds <= 0) {
+            return;
+        }
+
+        try {
+            // Parse giờ bắt đầu
+            LocalTime start = LocalTime.parse(startTimeStr);
+
+            // Tính giờ kết thúc bằng cách cộng thêm GIÂY
+            LocalTime end = start.plusSeconds(durationSeconds);
+
+            // Logic kiểm tra thời gian (xử lý cả trường hợp qua đêm)
+            boolean shouldBeOn;
+            if (end.isBefore(start)) {
+                // Trường hợp qua đêm (VD: chạy từ 23:59:50 đến 00:00:10)
+                shouldBeOn = now.isAfter(start) || now.isBefore(end);
+            } else {
+                // Trường hợp trong ngày
+                shouldBeOn = now.isAfter(start) && now.isBefore(end);
+            }
+
+            // Gọi hàm điều khiển cốt lõi (Hàm này đã có logic check AUTO/MANUAL)
+            checkAndControlDevice(deviceId, shouldBeOn);
+
+        } catch (DateTimeParseException e) {
+            // Log lỗi nhẹ (có thể dùng log.warn nếu cấu hình logger)
+            System.err.println("Lỗi định dạng giờ cho thiết bị " + deviceId);
+        }
+    }
     // Helper: Ghi log
     private void logAction(String deviceId, String action, String triggeredBy, String desc) {
         actionLogRepository.save(ActionLog.builder()
